@@ -13,28 +13,31 @@
  * limitations under the License.
  */
 
-const copyrightElement = document.querySelector('.copyright');
+const AlertType = {
+	Primary: 'primary',
+	Secondary: 'secondary',
+	Success: 'success',
+	Danger: 'danger',
+	Warning: 'warning',
+	Info: 'info',
+	Light: 'light',
+	Dark: 'dark'
+};
 const informationElement = document.querySelector('.information');
 const deviceSelectElement = document.querySelector('.device-select');
 const heartRateElement = document.querySelector('.heart-rate');
-const heartRateEmitTimeElement = document.querySelector(
-	'.heart-rate-emit-time'
-);
+const heartRateEmitTimeElement = document.querySelector( '.heart-rate-emit-time');
 const tableJQueryElement = $('.heart-rate-table');
-copyrightElement.innerHTML =
-	'Copyright &copy; ' + new Date().getFullYear() + ' Mokhamad Mustaqim';
 
 let datatable = null;
 let lastPulseReceived = new Date();
 let devices = [];
 let tableData = [];
-let isTableDataReversed = false;
 let selectedDeviceId = null;
 
 function addNewOption(value, option) {
 	return '<option value="' + value + '">' + option + '</option>';
 }
-
 
 function addDataTableRows(rows) {
 	if (!Array.isArray(rows)) {
@@ -84,16 +87,8 @@ function getSelectedDevice() {
 	return devices.find(dev => dev.id === selectedDeviceId);
 }
 
-const AlertType = {
-	Primary: 'primary',
-	Secondary: 'secondary',
-	Success: 'success',
-	Danger: 'danger',
-	Warning: 'warning',
-	Info: 'info',
-	Light: 'light',
-	Dark: 'dark'
-};
+// ----------------------------------------------------------------------------
+
 const WebSocketEvent = {
 	onConnection: 'onConnection',
 	onEmitHeartRate: 'onEmitHeartRate',
@@ -104,22 +99,16 @@ const WebSocketEvent = {
 	onError: 'onError'
 };
 
-const serverURI =
-	window.location.protocol +
-	'//' +
-	window.location.hostname +
-	':' +
-	window.location.port +
-	'/';
+let socket;
 
-const socket = io(serverURI, {
-	autoConnect: true,
-	transports: ['websocket']
-});
+function createPayload(event, data) {
+	return JSON.stringify({ event, data });
+}
 
 function onConnection(message) {
 	console.log(message);
 	showAlert(AlertType.Success, message, true);
+	socket.send(createPayload(WebSocketEvent.onRequestDevices));
 }
 
 function onEmitHeartRate(pulse) {
@@ -193,46 +182,68 @@ function onRetrieveHeartRates(pulses) {
 }
 
 function onError(error) {
-	console.log('Web Socket Request ERROR: ' + error.message);
-	showAlert(AlertType.Danger, error.message);
+	console.log('Web Socket Server ERROR: ' + (error.message || error.sqlMessage));
+	showAlert(AlertType.Danger, (error.message || error.sqlMessage));
 }
 
-function onResponseEvent(event, ...args) {
+function onResponseEvent(event, data) {
 	switch (event) {
-		case WebSocketEvent.onError:
-			onError(...args);
+		case WebSocketEvent.onConnection:
+			onConnection(data);
+			break;
+		case WebSocketEvent.onEmitHeartRate:
+			onEmitHeartRate(data);
 			break;
 		case WebSocketEvent.onRetrieveDevices:
-			onRetrieveDevices(...args);
+			onRetrieveDevices(data);
 			break;
 		case WebSocketEvent.onRetrieveHeartRates:
-			onRetrieveHeartRates(...args);
+			onRetrieveHeartRates(data);
+			break;
+		case WebSocketEvent.onError:
+			onError(data);
 			break;
 	}
 }
 
-socket.on(WebSocketEvent.onConnection, onConnection);
-socket.on(WebSocketEvent.onEmitHeartRate, onEmitHeartRate);
-socket.on('error', function(message) {
-	console.log(message ? message : 'An unknown error happen on Web Socket.');
-	showAlert(
-		AlertType.Danger,
-		message ? message : 'An unknown error happen on Web Socket.',
-		true
-	);
-});
-socket.on('connect_failed', function() {
-	console.log('Failed to connect to Web Socket server!');
-	showAlert(
-		AlertType.Danger,
-		'Failed to connect to Web Socket server!',
-		true
-	);
-});
-socket.on('disconnect', function() {
-	console.log('Disconnected from Web Socket server!');
-	showAlert(AlertType.Warning, 'Disconnected from Web Socket server!', true);
-});
+function startWebSocket() {
+	const serverURI =
+		(window.location.protocol === 'https:' ? 'wss:' : 'ws:')+
+		'//' +
+		window.location.hostname +
+		':' +
+		window.location.port +
+		'/';
+	socket = new WebSocket(serverURI);
+	socket.onopen = event => {
+		showAlert(
+			AlertType.Warning,
+			'Real-Time connection to server opened. Waiting response...'
+		);
+	}
+	socket.onclose = closeEvent => {
+		console.log('Disconnected from Web Socket server! Retrying to connect...');
+		showAlert(AlertType.Warning, 'Disconnected from Web Socket server! Retrying to connect...', true);
+		setTimeout(function() { startWebSocket(); }, 1000);
+	}
+	socket.onmessage = messageEvent => {
+		const { event, data } = JSON.parse(messageEvent.data);
+		if (!event) {
+			return;
+		}
+		onResponseEvent(event, data);
+	}
+	socket.onerror = event => {
+		event.preventDefault();
+		console.log('An unknown error happened on Web Socket.');
+		showAlert(
+			AlertType.Danger,
+			'An unknown error happened on Web Socket.',
+			true
+		);
+	}
+}
+
 deviceSelectElement.addEventListener('change', function() {
 	selectedDeviceId = parseInt(deviceSelectElement.value);
 	heartRateElement.innerHTML = '0';
@@ -240,11 +251,7 @@ deviceSelectElement.addEventListener('change', function() {
 	setDataTableText(
 		'Getting heart rates data of ' + getSelectedDevice().name + '...'
 	);
-	socket.emit(
-		WebSocketEvent.onRequestHeartRates,
-		selectedDeviceId,
-		onResponseEvent
-	);
+	socket.send(createPayload(WebSocketEvent.onRequestHeartRates, selectedDeviceId));
 });
 
 function main() {
@@ -253,7 +260,7 @@ function main() {
 		AlertType.Warning,
 		'Connecting to Real-Time server via Web Socket...'
 	);
-	socket.emit(WebSocketEvent.onRequestDevices, onResponseEvent);
+	startWebSocket();
 	setInterval(function() {
 		const timeDiff = new Date().getTime() - lastPulseReceived.getTime();
 		if (timeDiff > 3000) {

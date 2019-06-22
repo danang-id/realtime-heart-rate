@@ -18,8 +18,8 @@ import path from 'path';
 import http from 'http';
 import express from 'express';
 import { json, urlencoded } from 'body-parser';
-import SocketIO from 'socket.io';
 import moment from 'moment';
+import WebSocket from 'ws';
 
 // Import internal functions
 import { getConfig } from './config';
@@ -34,10 +34,52 @@ const config = getConfig();
 const app = express();
 const onApp = router.use(app);
 const server = new http.Server(app);
-const io = SocketIO(server);
+const webSocketServer = new WebSocket.Server({ server });
 const port = config.PORT || process.env.PORT || 9000;
 
-// Configure HTTP Server
+function createPayload(event: WebSocketEvent, data?: WebSocketData): string {
+	return JSON.stringify({ event, data })
+}
+
+function serverSend(socket: WebSocket, event: WebSocketEvent, data?: WebSocketData) {
+	socket.send(createPayload(event, data))
+}
+
+function serverBroadcast(event: WebSocketEvent, data?: WebSocketData) {
+	webSocketServer.clients.forEach(function each(client) {
+		if (client.readyState === WebSocket.OPEN) {
+			serverSend(client, event, data)
+		}
+	});
+}
+
+async function onRequestDevices(socket: WebSocket) {
+	try {
+		const database = await getDatabase();
+		const devices: IDeviceModel[] = await database.query(
+			'SELECT * FROM devices'
+		);
+		await database.end();
+		serverSend(socket, WebSocketEvent.onRetrieveDevices, devices);
+	} catch (error) {
+		serverSend(socket, WebSocketEvent.onError, error);
+	}
+}
+
+async function onRequestHeartRates(socket: WebSocket, deviceId: number) {
+	try {
+		const database = await getDatabase();
+		const pulses: IPulseModel[] = await database.query(
+			'SELECT * FROM pulses WHERE ?',
+			{ device_id: deviceId }
+		);
+		await database.end();
+		serverSend(socket, WebSocketEvent.onRetrieveHeartRates, pulses);
+	} catch (error) {
+		serverSend(socket, WebSocketEvent.onError, error);
+	}
+}
+
 docs(app); // Show Swagger UI as documentation on '/docs' path
 app.use(json()); // Use JSON parser to parse JSON body as JavaScript object
 app.use(urlencoded({ extended: false })); // Parse body as URL Encoded format
@@ -98,7 +140,7 @@ onApp.get('/emit-pulse')
 			);
 			await database.end();
 			pulse = pulses[0];
-			io.emit(WebSocketEvent.onEmitHeartRate, pulse);
+			serverBroadcast(WebSocketEvent.onEmitHeartRate, pulse);
 			return response.json({
 				success: true,
 				code: 200,
@@ -119,36 +161,26 @@ onApp.get('/emit-pulse')
 app.use(notFound);
 
 // Configure web socket for front-end
-io.on('connection', function(socket) {
-	socket.emit(
-		WebSocketEvent.onConnection,
-		'Connected to Real-Time server using Web Socket.'
-	);
-	socket.on(WebSocketEvent.onRequestDevices, async emit => {
+webSocketServer.on('connection', function(socket) {
+	serverSend(socket, WebSocketEvent.onConnection, 'Connected to Real-Time server using Web Socket.');
+	socket.on('message', (message) => {
 		try {
-			const database = await getDatabase();
-			const devices: IDeviceModel[] = await database.query(
-				'SELECT * FROM devices'
-			);
-			await database.end();
-			emit(WebSocketEvent.onRetrieveDevices, devices);
+			const { event, data } = JSON.parse(message.toString());
+			if (!event) {
+				return;
+			}
+			switch (event) {
+				case WebSocketEvent.onRequestDevices:
+					onRequestDevices(socket);
+					break;
+				case WebSocketEvent.onRequestHeartRates:
+					onRequestHeartRates(socket, parseInt(data));
+					break;
+			}
 		} catch (error) {
-			emit(WebSocketEvent.onError, error);
+			// Do nothing
 		}
-	});
-	socket.on(WebSocketEvent.onRequestHeartRates, async (deviceId, emit) => {
-		try {
-			const database = await getDatabase();
-			const pulses: IPulseModel[] = await database.query(
-				'SELECT * FROM pulses WHERE ?',
-				{ device_id: deviceId }
-			);
-			await database.end();
-			emit(WebSocketEvent.onRetrieveHeartRates, pulses);
-		} catch (error) {
-			emit(WebSocketEvent.onError, error);
-		}
-	});
+	})
 });
 
 // Start server
@@ -166,3 +198,5 @@ enum WebSocketEvent {
 	onRetrieveHeartRates = 'onRetrieveHeartRates',
 	onError = 'onError'
 }
+
+type WebSocketData = any;

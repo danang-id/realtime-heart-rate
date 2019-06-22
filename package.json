@@ -1,37 +1,41 @@
 {
-  "name": "realtime-heart-rate",
-  "version": "1.0.0",
-  "description": "Back End for Real-Time Heart Rate monitoring.",
-  "main": "lib/app.js",
-  "repository": "git@github.com:danang-id/realtime-heart-rate.git",
-  "author": "Danang Galuh Tegar Prasetyo <danang.galuh.t@gmail.com> (https://github.com/danang-id)",
-  "license": "Apache-2.0",
-  "private": true,
-  "dependencies": {
-	"body-parser": "^1.19.0",
-	"dotenv": "^8.0.0",
-	"express": "^4.17.1",
-	"express-async-handler": "^1.1.4",
-	"moment": "^2.24.0",
-	"promise-mysql": "^4.0.4",
-	"socket.io": "^2.2.0",
-	"swagger-ui-express": "^4.0.6"
-  },
-  "devDependencies": {
-	"@types/body-parser": "^1.17.0",
-	"@types/dotenv": "^6.1.1",
-	"@types/express": "^4.17.0",
-	"@types/express-serve-static-core": "^4.16.7",
-	"@types/node": "^12.0.8",
-	"@types/socket.io": "^2.1.2",
-	"@types/swagger-ui-express": "^3.0.1",
-	"nodemon": "^1.19.1",
-	"ts-node": "^8.3.0",
-	"typescript": "^3.5.2"
-  },
-  "scripts": {
-	"start": "ts-node src/app.ts",
-	"dev": "./node_modules/nodemon/bin/nodemon.js",
-	"build": "tsc"
-  }
+	"name": "realtime-heart-rate",
+	"version": "1.0.0",
+	"description": "Back End for Real-Time Heart Rate monitoring.",
+	"main": "lib/app.js",
+	"repository": "git@github.com:danang-id/realtime-heart-rate.git",
+	"author": "Danang Galuh Tegar Prasetyo <danang.galuh.t@gmail.com> (https://github.com/danang-id)",
+	"license": "Apache-2.0",
+	"private": true,
+	"dependencies": {
+		"body-parser": "^1.19.0",
+		"dotenv": "^8.0.0",
+		"express": "^4.17.1",
+		"express-async-handler": "^1.1.4",
+		"moment": "^2.24.0",
+		"promise-mysql": "^4.0.4",
+		"swagger-ui-express": "^4.0.6",
+		"ws": "^7.0.1"
+	},
+	"devDependencies": {
+		"@types/body-parser": "^1.17.0",
+		"@types/dotenv": "^6.1.1",
+		"@types/express": "^4.17.0",
+		"@types/express-serve-static-core": "^4.16.7",
+		"@types/node": "^12.0.8",
+		"@types/swagger-ui-express": "^3.0.1",
+		"@types/ws": "^6.0.1",
+		"nodemon": "^1.19.1",
+		"ts-node": "^8.3.0",
+		"typescript": "^3.5.2"
+	},
+	"scripts": {
+		"start": "ts-node src/app.ts",
+		"dev": "./node_modules/nodemon/bin/nodemon.js",
+		"build": "tsc"
+	},
+	"optionalDependencies": {
+		"bufferutil": "^4.0.1",
+		"utf-8-validate": "^5.0.2"
+	}
 }
