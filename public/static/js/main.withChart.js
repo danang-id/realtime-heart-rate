@@ -298,7 +298,7 @@ function onResponseEvent(event, data) {
 }
 
 function startWebSocket() {
-	socket = new WebSocket('wss://cloud.achex.ca/816');
+	socket = new WebSocket('ws://achex.ca:4010');
 	socketOpen = false;
 	socket.onopen = event => {
 		showAlert(
@@ -362,15 +362,7 @@ function main() {
 		'Connecting to Real-Time server via Web Socket...'
 	);
 	initialiseChart();
-	if (window.location.protocol !== 'https:') {
-		showAlert(
-			AlertType.Danger,
-			'ERROR: Real-Time web server can only be connected when using HTTPS protocol connection.',
-			true
-		);
-	} else {
-		startWebSocket();
-	}
+	startWebSocket();
 	setInterval(function() {
 		const timeDiff = new Date().getTime() - lastPulseReceived.getTime();
 		if (timeDiff > 3000) {

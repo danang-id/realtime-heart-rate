@@ -101,7 +101,7 @@ async function onRequestEvent(event: WebSocketEvent, data?: WebSocketData) {
 }
 
 function startWebSocket() {
-	socket = new WebSocket('wss://cloud.achex.ca/816');
+	socket = new WebSocket('ws://achex.ca:4010');
 	socketOpen = false;
 	socket.on('open', () => {
 		socket.send(JSON.stringify({
