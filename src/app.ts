@@ -34,39 +34,45 @@ const config = getConfig();
 const app = express();
 const onApp = router.use(app);
 const server = new http.Server(app);
-const webSocketServer = new WebSocket.Server({ server });
 const port = config.PORT || process.env.PORT || 9000;
+let socket: WebSocket;
+let socketOpen: boolean;
 
 function createPayload(event: WebSocketEvent, data?: WebSocketData): string {
 	return JSON.stringify({ event, data })
 }
 
-function serverSend(socket: WebSocket, event: WebSocketEvent, data?: WebSocketData) {
-	socket.send(createPayload(event, data))
+function socketSend(event: WebSocketEvent, data?: WebSocketData) {
+	if (socket !== void 0 && socketOpen) {
+		socket.send(JSON.stringify({
+			to: 'frontend@816',
+			payload: createPayload(event, data)
+		}));
+	}
 }
 
-function serverBroadcast(event: WebSocketEvent, data?: WebSocketData) {
-	webSocketServer.clients.forEach(function each(client) {
-		if (client.readyState === WebSocket.OPEN) {
-			serverSend(client, event, data)
-		}
-	});
+function socketBroadcast(event: WebSocketEvent, data?: WebSocketData) {
+	socketSend(event, data);
 }
 
-async function onRequestDevices(socket: WebSocket) {
+async function onConnection() {
+	socketSend(WebSocketEvent.onConnection, 'Connected to Real-Time server using Web Socket.');
+}
+
+async function onRequestDevices() {
 	try {
 		const database = await getDatabase();
 		const devices: IDeviceModel[] = await database.query(
 			'SELECT * FROM devices'
 		);
 		await database.end();
-		serverSend(socket, WebSocketEvent.onRetrieveDevices, devices);
+		socketSend(WebSocketEvent.onRetrieveDevices, devices);
 	} catch (error) {
-		serverSend(socket, WebSocketEvent.onError, error);
+		socketSend(WebSocketEvent.onError, error);
 	}
 }
 
-async function onRequestHeartRates(socket: WebSocket, deviceId: number) {
+async function onRequestHeartRates(deviceId: number) {
 	try {
 		const database = await getDatabase();
 		const pulses: IPulseModel[] = await database.query(
@@ -74,10 +80,55 @@ async function onRequestHeartRates(socket: WebSocket, deviceId: number) {
 			{ device_id: deviceId }
 		);
 		await database.end();
-		serverSend(socket, WebSocketEvent.onRetrieveHeartRates, pulses);
+		socketSend(WebSocketEvent.onRetrieveHeartRates, pulses);
 	} catch (error) {
-		serverSend(socket, WebSocketEvent.onError, error);
+		socketSend(WebSocketEvent.onError, error);
 	}
+}
+
+async function onRequestEvent(event: WebSocketEvent, data?: WebSocketData) {
+	switch (event) {
+		case WebSocketEvent.onConnection:
+			await onConnection();
+			break;
+		case WebSocketEvent.onRequestDevices:
+			await onRequestDevices();
+			break;
+		case WebSocketEvent.onRequestHeartRates:
+			await onRequestHeartRates(parseInt(data));
+			break;
+	}
+}
+
+function startWebSocket() {
+	socket = new WebSocket('wss://cloud.achex.ca/816');
+	socketOpen = false;
+	socket.on('open', () => {
+		socket.send(JSON.stringify({
+			setID: 'backend@816',
+			passwd: 'backend'
+		}))
+	});
+	socket.on('close', () => {
+		socketOpen = false;
+		setTimeout(() => { startWebSocket(); }, 1000);
+	});
+	socket.on('message', (message: WebSocket.Data) => {
+		try {
+			const data = JSON.parse(message.toString());
+			if (data.auth && data.auth === 'ok') {
+				socketOpen = true;
+			}
+			if (socketOpen && !!data.payload) {
+				const payload = JSON.parse(data.payload);
+				if (!!payload.event) {
+					onRequestEvent(payload.event, payload.data);
+				}
+			}
+		} catch (error) {
+			socketSend(WebSocketEvent.onError, error);
+		}
+	})
 }
 
 docs(app); // Show Swagger UI as documentation on '/docs' path
@@ -140,7 +191,7 @@ onApp.get('/emit-pulse')
 			);
 			await database.end();
 			pulse = pulses[0];
-			serverBroadcast(WebSocketEvent.onEmitHeartRate, pulse);
+			socketBroadcast(WebSocketEvent.onEmitHeartRate, pulse);
 			return response.json({
 				success: true,
 				code: 200,
@@ -160,31 +211,9 @@ onApp.get('/emit-pulse')
 // Handle not found error
 app.use(notFound);
 
-// Configure web socket for front-end
-webSocketServer.on('connection', function(socket) {
-	serverSend(socket, WebSocketEvent.onConnection, 'Connected to Real-Time server using Web Socket.');
-	socket.on('message', (message) => {
-		try {
-			const { event, data } = JSON.parse(message.toString());
-			if (!event) {
-				return;
-			}
-			switch (event) {
-				case WebSocketEvent.onRequestDevices:
-					onRequestDevices(socket);
-					break;
-				case WebSocketEvent.onRequestHeartRates:
-					onRequestHeartRates(socket, parseInt(data));
-					break;
-			}
-		} catch (error) {
-			// Do nothing
-		}
-	})
-});
-
 // Start server
 server.listen(port, () => {
+	startWebSocket();
 	console.log('Real time server started on port ' + port);
 });
 

@@ -180,14 +180,25 @@ const WebSocketEvent = {
 };
 
 let socket;
+let socketOpen;
 
 function createPayload(event, data) {
 	return JSON.stringify({ event, data });
 }
 
+function socketSend(event, data) {
+	if (socket !== void 0 && socketOpen) {
+		socket.send(JSON.stringify({
+			to: 'backend@816',
+			payload: createPayload(event, data)
+		}));
+	}
+}
+
 function onConnection(message) {
 	console.log(message);
 	showAlert(AlertType.Success, message, true);
+	socketSend(WebSocketEvent.onRequestDevices);
 }
 
 function onEmitHeartRate(pulse) {
@@ -287,34 +298,40 @@ function onResponseEvent(event, data) {
 }
 
 function startWebSocket() {
-	const serverURI =
-		(window.location.protocol === 'https:' ? 'wss:' : 'ws:')+
-		'//' +
-		window.location.hostname +
-		':' +
-		window.location.port +
-		'/';
-	socket = new WebSocket(serverURI);
+	socket = new WebSocket('wss://cloud.achex.ca/816');
+	socketOpen = false;
 	socket.onopen = event => {
 		showAlert(
 			AlertType.Warning,
-			'Real-Time connection to server opened. Waiting response...'
+			'Real-Time connection to server opened. Waiting response...',
+			true
 		);
+		socket.send(JSON.stringify({
+			setID: 'frontend@816',
+			passwd: 'frontend'
+		}))
 	}
-	socket.onclose = closeEvent => {
+	socket.onclose = function() {
 		console.log('Disconnected from Web Socket server! Retrying to connect...');
 		showAlert(AlertType.Warning, 'Disconnected from Web Socket server! Retrying to connect...', true);
 		setTimeout(function() { startWebSocket(); }, 1000);
 	}
-	socket.onmessage = messageEvent => {
-		const { event, data } = JSON.parse(messageEvent.data);
-		if (!event) {
-			return;
+	socket.onmessage = function(messageEvent) {
+		const data = JSON.parse(messageEvent.data.toString());
+		if (data.auth && data.auth === 'ok') {
+			socketOpen = true;
+			socketSend(WebSocketEvent.onConnection);
 		}
-		onResponseEvent(event, data);
+		if (socketOpen && !!data.payload) {
+			const payload = JSON.parse(data.payload);
+			if (!!payload.event) {
+				onResponseEvent(payload.event, payload.data);
+			}
+		}
 	}
-	socket.onerror = event => {
+	socket.onerror = function(event) {
 		event.preventDefault();
+		socketOpen = false;
 		console.log('An unknown error happened on Web Socket.');
 		showAlert(
 			AlertType.Danger,
@@ -332,7 +349,7 @@ deviceSelectElement.addEventListener('change', function() {
 	setDataTableText(
 		'Getting heart rates data of ' + getSelectedDevice().name + '...'
 	);
-	socket.send(createPayload(WebSocketEvent.onRequestHeartRates, selectedDeviceId));
+	socketSend(WebSocketEvent.onRequestHeartRates, selectedDeviceId);
 });
 changeChartButtonElement.addEventListener('click', function() {
 	switchChart();
@@ -345,7 +362,15 @@ function main() {
 		'Connecting to Real-Time server via Web Socket...'
 	);
 	initialiseChart();
-	startWebSocket();
+	if (window.location.protocol !== 'https:') {
+		showAlert(
+			AlertType.Danger,
+			'ERROR: Real-Time web server can only be connected when using HTTPS protocol connection.',
+			true
+		);
+	} else {
+		startWebSocket();
+	}
 	setInterval(function() {
 		const timeDiff = new Date().getTime() - lastPulseReceived.getTime();
 		if (timeDiff > 3000) {
