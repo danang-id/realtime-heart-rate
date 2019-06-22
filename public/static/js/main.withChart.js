@@ -298,8 +298,7 @@ function onResponseEvent(event, data) {
 }
 
 function startWebSocket() {
-	const serverURI = window.location.protocol === 'https:' ? 'wss://cloud.achex.ca/816' : 'ws://achex.ca:4010';
-	socket = new WebSocket(serverURI);
+	socket = new WebSocket('ws://achex.ca:4010');
 	socketOpen = false;
 	socket.onopen = event => {
 		showAlert(
