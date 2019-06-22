@@ -213,7 +213,8 @@ function startWebSocket() {
 		window.location.hostname +
 		':' +
 		window.location.port +
-		'/';
+		'/' +
+		(window.location.hostname !== 'localhost' ? 'wss' : '');
 	socket = new WebSocket(serverURI);
 	socket.onopen = event => {
 		showAlert(
