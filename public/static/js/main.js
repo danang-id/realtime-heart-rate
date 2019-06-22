@@ -100,25 +100,15 @@ const WebSocketEvent = {
 };
 
 let socket;
-let socketOpen;
 
 function createPayload(event, data) {
 	return JSON.stringify({ event, data });
 }
 
-function socketSend(event, data) {
-	if (socket !== void 0 && socketOpen) {
-		socket.send(JSON.stringify({
-			to: 'backend@816',
-			payload: createPayload(event, data)
-		}));
-	}
-}
-
 function onConnection(message) {
 	console.log(message);
 	showAlert(AlertType.Success, message, true);
-	socketSend(WebSocketEvent.onRequestDevices);
+	socket.send(createPayload(WebSocketEvent.onRequestDevices));
 }
 
 function onEmitHeartRate(pulse) {
@@ -217,40 +207,39 @@ function onResponseEvent(event, data) {
 }
 
 function startWebSocket() {
+<<<<<<< HEAD
 	socket = new WebSocket('ws://achex.ca:4010');
 	socketOpen = false;
+=======
+	const serverURI =
+		(window.location.protocol === 'https:' ? 'wss:' : 'ws:')+
+		'//' +
+		window.location.hostname +
+		':' +
+		window.location.port +
+		'/';
+	socket = new WebSocket(serverURI);
+>>>>>>> parent of bd03dc4... Use achex.ca websocket server as bridge
 	socket.onopen = event => {
 		showAlert(
 			AlertType.Warning,
-			'Real-Time connection to server opened. Waiting response...',
-			true
+			'Real-Time connection to server opened. Waiting response...'
 		);
-		socket.send(JSON.stringify({
-			setID: 'frontend@816',
-			passwd: 'frontend'
-		}))
 	}
-	socket.onclose = function() {
+	socket.onclose = closeEvent => {
 		console.log('Disconnected from Web Socket server! Retrying to connect...');
 		showAlert(AlertType.Warning, 'Disconnected from Web Socket server! Retrying to connect...', true);
 		setTimeout(function() { startWebSocket(); }, 1000);
 	}
-	socket.onmessage = function(messageEvent) {
-		const data = JSON.parse(messageEvent.data.toString());
-		if (data.auth && data.auth === 'ok') {
-			socketOpen = true;
-			socketSend(WebSocketEvent.onConnection);
+	socket.onmessage = messageEvent => {
+		const { event, data } = JSON.parse(messageEvent.data);
+		if (!event) {
+			return;
 		}
-		if (socketOpen && !!data.payload) {
-			const payload = JSON.parse(data.payload);
-			if (!!payload.event) {
-				onResponseEvent(payload.event, payload.data);
-			}
-		}
+		onResponseEvent(event, data);
 	}
-	socket.onerror = function(event) {
+	socket.onerror = event => {
 		event.preventDefault();
-		socketOpen = false;
 		console.log('An unknown error happened on Web Socket.');
 		showAlert(
 			AlertType.Danger,
@@ -267,7 +256,7 @@ deviceSelectElement.addEventListener('change', function() {
 	setDataTableText(
 		'Getting heart rates data of ' + getSelectedDevice().name + '...'
 	);
-	socketSend(WebSocketEvent.onRequestHeartRates, selectedDeviceId);
+	socket.send(createPayload(WebSocketEvent.onRequestHeartRates, selectedDeviceId));
 });
 
 function main() {

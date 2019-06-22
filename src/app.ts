@@ -34,45 +34,39 @@ const config = getConfig();
 const app = express();
 const onApp = router.use(app);
 const server = new http.Server(app);
+const webSocketServer = new WebSocket.Server({ server });
 const port = config.PORT || process.env.PORT || 9000;
-let socket: WebSocket;
-let socketOpen: boolean;
 
 function createPayload(event: WebSocketEvent, data?: WebSocketData): string {
 	return JSON.stringify({ event, data })
 }
 
-function socketSend(event: WebSocketEvent, data?: WebSocketData) {
-	if (socket !== void 0 && socketOpen) {
-		socket.send(JSON.stringify({
-			to: 'frontend@816',
-			payload: createPayload(event, data)
-		}));
-	}
+function serverSend(socket: WebSocket, event: WebSocketEvent, data?: WebSocketData) {
+	socket.send(createPayload(event, data))
 }
 
-function socketBroadcast(event: WebSocketEvent, data?: WebSocketData) {
-	socketSend(event, data);
+function serverBroadcast(event: WebSocketEvent, data?: WebSocketData) {
+	webSocketServer.clients.forEach(function each(client) {
+		if (client.readyState === WebSocket.OPEN) {
+			serverSend(client, event, data)
+		}
+	});
 }
 
-async function onConnection() {
-	socketSend(WebSocketEvent.onConnection, 'Connected to Real-Time server using Web Socket.');
-}
-
-async function onRequestDevices() {
+async function onRequestDevices(socket: WebSocket) {
 	try {
 		const database = await getDatabase();
 		const devices: IDeviceModel[] = await database.query(
 			'SELECT * FROM devices'
 		);
 		await database.end();
-		socketSend(WebSocketEvent.onRetrieveDevices, devices);
+		serverSend(socket, WebSocketEvent.onRetrieveDevices, devices);
 	} catch (error) {
-		socketSend(WebSocketEvent.onError, error);
+		serverSend(socket, WebSocketEvent.onError, error);
 	}
 }
 
-async function onRequestHeartRates(deviceId: number) {
+async function onRequestHeartRates(socket: WebSocket, deviceId: number) {
 	try {
 		const database = await getDatabase();
 		const pulses: IPulseModel[] = await database.query(
@@ -80,12 +74,13 @@ async function onRequestHeartRates(deviceId: number) {
 			{ device_id: deviceId }
 		);
 		await database.end();
-		socketSend(WebSocketEvent.onRetrieveHeartRates, pulses);
+		serverSend(socket, WebSocketEvent.onRetrieveHeartRates, pulses);
 	} catch (error) {
-		socketSend(WebSocketEvent.onError, error);
+		serverSend(socket, WebSocketEvent.onError, error);
 	}
 }
 
+<<<<<<< HEAD
 async function onRequestEvent(event: WebSocketEvent, data?: WebSocketData) {
 	switch (event) {
 		case WebSocketEvent.onConnection:
@@ -131,6 +126,8 @@ function startWebSocket() {
 	})
 }
 
+=======
+>>>>>>> parent of bd03dc4... Use achex.ca websocket server as bridge
 docs(app); // Show Swagger UI as documentation on '/docs' path
 app.use(json()); // Use JSON parser to parse JSON body as JavaScript object
 app.use(urlencoded({ extended: false })); // Parse body as URL Encoded format
@@ -191,7 +188,7 @@ onApp.get('/emit-pulse')
 			);
 			await database.end();
 			pulse = pulses[0];
-			socketBroadcast(WebSocketEvent.onEmitHeartRate, pulse);
+			serverBroadcast(WebSocketEvent.onEmitHeartRate, pulse);
 			return response.json({
 				success: true,
 				code: 200,
@@ -211,9 +208,31 @@ onApp.get('/emit-pulse')
 // Handle not found error
 app.use(notFound);
 
+// Configure web socket for front-end
+webSocketServer.on('connection', function(socket) {
+	serverSend(socket, WebSocketEvent.onConnection, 'Connected to Real-Time server using Web Socket.');
+	socket.on('message', (message) => {
+		try {
+			const { event, data } = JSON.parse(message.toString());
+			if (!event) {
+				return;
+			}
+			switch (event) {
+				case WebSocketEvent.onRequestDevices:
+					onRequestDevices(socket);
+					break;
+				case WebSocketEvent.onRequestHeartRates:
+					onRequestHeartRates(socket, parseInt(data));
+					break;
+			}
+		} catch (error) {
+			// Do nothing
+		}
+	})
+});
+
 // Start server
 server.listen(port, () => {
-	startWebSocket();
 	console.log('Real time server started on port ' + port);
 });
 
