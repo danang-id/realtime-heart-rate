@@ -287,10 +287,6 @@ function onResponseEvent(event, data) {
 }
 
 function startWebSocket() {
-<<<<<<< HEAD
-	socket = new WebSocket('ws://achex.ca:4010');
-	socketOpen = false;
-=======
 	const serverURI =
 		(window.location.protocol === 'https:' ? 'wss:' : 'ws:')+
 		'//' +
@@ -299,7 +295,6 @@ function startWebSocket() {
 		window.location.port +
 		'/';
 	socket = new WebSocket(serverURI);
->>>>>>> parent of bd03dc4... Use achex.ca websocket server as bridge
 	socket.onopen = event => {
 		showAlert(
 			AlertType.Warning,

@@ -62,7 +62,7 @@ async function onRequestDevices(socket: WebSocket) {
 		await database.end();
 		serverSend(socket, WebSocketEvent.onRetrieveDevices, devices);
 	} catch (error) {
-		serverSend(socket, WebSocketEvent.onError, error);
+		await onError(socket, error);
 	}
 }
 
@@ -76,58 +76,28 @@ async function onRequestHeartRates(socket: WebSocket, deviceId: number) {
 		await database.end();
 		serverSend(socket, WebSocketEvent.onRetrieveHeartRates, pulses);
 	} catch (error) {
-		serverSend(socket, WebSocketEvent.onError, error);
+		await onError(socket, error);
 	}
 }
 
-<<<<<<< HEAD
-async function onRequestEvent(event: WebSocketEvent, data?: WebSocketData) {
+async function onError(socket: WebSocket, error: Error) {
+	serverSend(socket, WebSocketEvent.onError, error);
+}
+
+async function onRequestEvent(socket: WebSocket, event: WebSocketEvent, data?: WebSocketData) {
 	switch (event) {
-		case WebSocketEvent.onConnection:
-			await onConnection();
-			break;
 		case WebSocketEvent.onRequestDevices:
-			await onRequestDevices();
+			await onRequestDevices(socket);
 			break;
 		case WebSocketEvent.onRequestHeartRates:
-			await onRequestHeartRates(parseInt(data));
+			await onRequestHeartRates(socket, parseInt(data));
+			break;
+		case WebSocketEvent.onError:
+			await onError(socket, data);
 			break;
 	}
 }
 
-function startWebSocket() {
-	socket = new WebSocket('ws://achex.ca:4010');
-	socketOpen = false;
-	socket.on('open', () => {
-		socket.send(JSON.stringify({
-			setID: 'backend@816',
-			passwd: 'backend'
-		}))
-	});
-	socket.on('close', () => {
-		socketOpen = false;
-		setTimeout(() => { startWebSocket(); }, 1000);
-	});
-	socket.on('message', (message: WebSocket.Data) => {
-		try {
-			const data = JSON.parse(message.toString());
-			if (data.auth && data.auth === 'ok') {
-				socketOpen = true;
-			}
-			if (socketOpen && !!data.payload) {
-				const payload = JSON.parse(data.payload);
-				if (!!payload.event) {
-					onRequestEvent(payload.event, payload.data);
-				}
-			}
-		} catch (error) {
-			socketSend(WebSocketEvent.onError, error);
-		}
-	})
-}
-
-=======
->>>>>>> parent of bd03dc4... Use achex.ca websocket server as bridge
 docs(app); // Show Swagger UI as documentation on '/docs' path
 app.use(json()); // Use JSON parser to parse JSON body as JavaScript object
 app.use(urlencoded({ extended: false })); // Parse body as URL Encoded format
@@ -211,22 +181,15 @@ app.use(notFound);
 // Configure web socket for front-end
 webSocketServer.on('connection', function(socket) {
 	serverSend(socket, WebSocketEvent.onConnection, 'Connected to Real-Time server using Web Socket.');
-	socket.on('message', (message) => {
+	socket.on('message', async (message) => {
 		try {
 			const { event, data } = JSON.parse(message.toString());
 			if (!event) {
 				return;
 			}
-			switch (event) {
-				case WebSocketEvent.onRequestDevices:
-					onRequestDevices(socket);
-					break;
-				case WebSocketEvent.onRequestHeartRates:
-					onRequestHeartRates(socket, parseInt(data));
-					break;
-			}
+			await onRequestEvent(socket, event, data);
 		} catch (error) {
-			// Do nothing
+			await onRequestEvent(socket, WebSocketEvent.onError, error);
 		}
 	})
 });
