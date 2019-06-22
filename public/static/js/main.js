@@ -271,6 +271,11 @@ deviceSelectElement.addEventListener('change', function() {
 });
 
 function main() {
+	setDataTableText('Please select a device first.');
+	showAlert(
+		AlertType.Warning,
+		'Connecting to Real-Time server via Web Socket...'
+	);
 	startWebSocket();
 	setInterval(function() {
 		const timeDiff = new Date().getTime() - lastPulseReceived.getTime();
