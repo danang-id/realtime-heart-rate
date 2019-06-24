@@ -15,26 +15,86 @@
 
 import dotenv from 'dotenv';
 import mysql from "promise-mysql";
+import mysqlx from '@mysql/xdevapi';
 
 dotenv.config();
 
-const mysqlConnectionConfig: mysql.ConnectionConfig = {
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USERNAME || 'root',
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME || 'heartrate',
-    timezone: 'UTC',
-    dateStrings: ['DATE', 'DATETIME']
-};
+class Database {
 
-export async function getDatabase() {
-    try {
-        const connection = await mysql.createConnection(mysqlConnectionConfig);
-        await connection.query("SET time_zone='+00:00';");
-        return connection;
-    } catch (error) {
-        throw error;
+    private mysqlxConnection = {
+        host: process.env.DB_HOST || 'localhost',
+        port: process.env.DB_PORT|| 33060,
+        password: process.env.DB_PASSWORD,
+        user: process.env.DB_USERNAME || 'root',
+        schema: process.env.DB_NAME || 'heartrate',
+    };
+    
+    private mysqlxPoolingOptions = { 
+        pooling: { 
+            enabled: true,
+             maxSize: 3
+        } 
+    };
+
+    private mysqlConnectionConfig: mysql.ConnectionConfig = {
+        host: process.env.DB_HOST || 'localhost',
+        user: process.env.DB_USERNAME || 'root',
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME || 'heartrate',
+        timezone: 'UTC',
+        dateStrings: ['DATE', 'DATETIME']
+    };
+
+    constructor() {
+
     }
+
+    private async createLegacyClient() {
+        try {
+            const client = await mysql.createConnection(this.mysqlConnectionConfig);
+            await client.query('SET time_zone=\'+00:00\';');
+            return client;
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    private async createXProtocolClient() {
+        return mysqlx.getClient(this.mysqlxConnection, this.mysqlxPoolingOptions);
+    }
+    
+    public async createClient(useXProtocol: boolean = true) {
+        return useXProtocol ? (await this.createXProtocolClient()) : (await this.createLegacyClient());
+    }
+    
+    public async createSession(client: any) {
+        const session = await client.getSession();
+        const preQuery = session.sql('SET time_zone=\'+00:00\';');
+        await preQuery.execute();
+        return session;
+    }
+    
+    public async getSchema(client: any) {
+        const session = await this.createSession(client);
+        const schema = session.getSchema(this.mysqlxConnection.schema);
+        return (await schema.existsInDatabase()) 
+            ? schema 
+            : (await session.createSchema(this.mysqlxConnection.schema));
+    }
+    
+    public async getTable(client: any, name: string) {
+        const schema = await this.getSchema(client);
+        const table = schema.getTable(name);
+        return (await table.existsInDatabase())
+            ? table
+            : (await schema.createTable(name));
+    }
+
+    public async close(client: any) {
+        !!client.close ? await client.close() : await client.end();
+    }
+
 }
 
-export default { getDatabase }
+export const database = new Database();
+export default database;

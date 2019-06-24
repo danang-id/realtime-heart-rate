@@ -13,7 +13,17 @@
  * limitations under the License.
  */
 
-const copyrightElement = document.querySelector('.copyright');
+
+const AlertType = {
+	Primary: 'primary',
+	Secondary: 'secondary',
+	Success: 'success',
+	Danger: 'danger',
+	Warning: 'warning',
+	Info: 'info',
+	Light: 'light',
+	Dark: 'dark'
+};
 const informationElement = document.querySelector('.information');
 const deviceSelectElement = document.querySelector('.device-select');
 const heartRateElement = document.querySelector('.heart-rate');
@@ -23,8 +33,6 @@ const heartRateEmitTimeElement = document.querySelector(
 const changeChartButtonElement = document.querySelector('#change-chart-button');
 const heartRateChartElement = document.querySelector('#heart-rate-chart');
 const tableJQueryElement = $('.heart-rate-table');
-copyrightElement.innerHTML =
-	'Copyright &copy; ' + new Date().getFullYear() + ' Mokhamad Mustaqim';
 
 let chart = null;
 let activeChart = 0;
@@ -159,16 +167,6 @@ function getSelectedDevice() {
 	return devices.find(dev => dev.id === selectedDeviceId);
 }
 
-const AlertType = {
-	Primary: 'primary',
-	Secondary: 'secondary',
-	Success: 'success',
-	Danger: 'danger',
-	Warning: 'warning',
-	Info: 'info',
-	Light: 'light',
-	Dark: 'dark'
-};
 const WebSocketEvent = {
 	onConnection: 'onConnection',
 	onEmitHeartRate: 'onEmitHeartRate',
@@ -179,13 +177,12 @@ const WebSocketEvent = {
 	onError: 'onError'
 };
 
-const serverURI =
-	window.location.protocol +
-	'//' +
-	window.location.hostname +
-	':' +
-	window.location.port +
-	'/';
+const serverURI = window.location.protocol 
+	+ '//' 
+	+ window.location.hostname
+	+ ':' 
+	+ window.location.port 
+	+ '/';
 
 const socket = io(serverURI, {
 	autoConnect: true,
@@ -195,6 +192,7 @@ const socket = io(serverURI, {
 function onConnection(message) {
 	console.log(message);
 	showAlert(AlertType.Success, message, true);
+	socket.emit(WebSocketEvent.onRequestDevices, onResponseEvent);
 }
 
 function onEmitHeartRate(pulse) {
@@ -269,45 +267,35 @@ function onRetrieveHeartRates(pulses) {
 }
 
 function onError(error) {
-	console.log('Web Socket Request ERROR: ' + error.message);
-	showAlert(AlertType.Danger, error.message);
+	const message = (error.message || error.sqlMessage || 'Unkown error');
+	console.log('Web Socket Request ERROR: ' + message);
+	showAlert(AlertType.Danger, message, true);
 }
 
-function onResponseEvent(event, ...args) {
+function onResponseEvent(event, data) {
 	switch (event) {
-		case WebSocketEvent.onError:
-			onError(...args);
-			break;
 		case WebSocketEvent.onRetrieveDevices:
-			onRetrieveDevices(...args);
+			onRetrieveDevices(data);
 			break;
 		case WebSocketEvent.onRetrieveHeartRates:
-			onRetrieveHeartRates(...args);
+			onRetrieveHeartRates(data);
+			break;
+		case WebSocketEvent.onError:
+			onError(data);
 			break;
 	}
 }
 
 socket.on(WebSocketEvent.onConnection, onConnection);
 socket.on(WebSocketEvent.onEmitHeartRate, onEmitHeartRate);
-socket.on('error', function(message) {
-	console.log(message ? message : 'An unknown error happen on Web Socket.');
-	showAlert(
-		AlertType.Danger,
-		message ? message : 'An unknown error happen on Web Socket.',
-		true
-	);
+socket.on('error', function() {
+	onError(new Error('An unknown error happen on Web Socket.'));
 });
 socket.on('connect_failed', function() {
-	console.log('Failed to connect to Web Socket server!');
-	showAlert(
-		AlertType.Danger,
-		'Failed to connect to Web Socket server!',
-		true
-	);
+	onError(new Error('Failed to connect to Web Socket server!'));
 });
 socket.on('disconnect', function() {
-	console.log('Disconnected from Web Socket server!');
-	showAlert(AlertType.Warning, 'Disconnected from Web Socket server!', true);
+	onWarning(new Error('Disconnected from Web Socket server! Retring to connect...'));
 });
 deviceSelectElement.addEventListener('change', function() {
 	selectedDeviceId = parseInt(deviceSelectElement.value);
@@ -334,7 +322,6 @@ function main() {
 		'Connecting to Real-Time server via Web Socket...'
 	);
 	initialiseChart();
-	socket.emit(WebSocketEvent.onRequestDevices, onResponseEvent);
 	setInterval(function() {
 		const timeDiff = new Date().getTime() - lastPulseReceived.getTime();
 		if (timeDiff > 3000) {
