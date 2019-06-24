@@ -108,8 +108,7 @@ const serverURI = window.location.protocol
 	+ '/';
 
 const socket = io(serverURI, {
-	autoConnect: true,
-	transports: ['websocket', 'polling']
+	autoConnect: true
 });
 
 function onConnection(message) {
